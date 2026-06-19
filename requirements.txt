@@ -1,0 +1,6 @@
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+protobuf>=4.25.0
+numpy>=1.26.0
+pytest>=8.0.0
+pytest-timeout>=2.2.0

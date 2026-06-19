@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+checkpoints/
+experiments/results/
+*.egg-info/
+dist/
+build/
+
+# PDF volumineux (reference cours, a garder en local)
+Distributed_Systems.pdf

@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package federation;
+
+// Service gRPC du coordinateur d'apprentissage fédéré
+service FederationCoordinator {
+  // RPC unary : petits messages (heartbeat, registration)
+  rpc RegisterClient (RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+  rpc RequestMutualExclusion (MutexRequest) returns (MutexResponse);
+  rpc ReleaseMutualExclusion (MutexRelease) returns (MutexAck);
+  rpc ResolveName (NameResolveRequest) returns (NameResolveResponse);
+  rpc QueryByAttributes (AttributeQueryRequest) returns (AttributeQueryResponse);
+
+  // RPC streaming : gros volumes (gradients/modèles)
+  rpc UploadGradients (stream GradientChunk) returns (UploadResponse);
+  rpc DownloadModel (ModelRequest) returns (stream ModelChunk);
+
+  // Élection de leader (Bully)
+  rpc SendElection (ElectionMessage) returns (ElectionResponse);
+  rpc AnnounceCoordinator (CoordinatorMessage) returns (CoordinatorAck);
+}
+
+message RegisterRequest {
+  string flat_id = 1;
+  string structured_path = 2;
+  map<string, string> attributes = 3;
+  int32 process_id = 4;
+  string address = 5;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  int32 assigned_id = 2;
+  int64 lamport_timestamp = 3;
+  int32 current_round = 4;
+}
+
+message HeartbeatRequest {
+  string client_id = 1;
+  int64 lamport_timestamp = 2;
+}
+
+message HeartbeatResponse {
+  bool alive = 1;
+  int32 coordinator_id = 2;
+  int64 lamport_timestamp = 3;
+  int32 current_round = 4;
+}
+
+message MutexRequest {
+  string client_id = 1;
+  string resource = 2;
+  int64 lamport_timestamp = 3;
+  int32 process_id = 4;
+}
+
+message MutexResponse {
+  bool granted = 1;
+  int64 lamport_timestamp = 2;
+}
+
+message MutexRelease {
+  string client_id = 1;
+  string resource = 2;
+  int64 lamport_timestamp = 3;
+}
+
+message MutexAck {
+  bool success = 1;
+}
+
+message NameResolveRequest {
+  oneof query {
+    string flat_id = 1;
+    string structured_path = 2;
+  }
+}
+
+message NameResolveResponse {
+  bool found = 1;
+  string address = 2;
+  map<string, string> attributes = 3;
+}
+
+message AttributeQueryRequest {
+  map<string, string> attributes = 1;
+}
+
+message AttributeQueryResponse {
+  repeated string client_ids = 1;
+  repeated string addresses = 2;
+}
+
+message GradientChunk {
+  string client_id = 1;
+  int32 round = 2;
+  bytes data = 3;
+  int32 chunk_index = 4;
+  int32 total_chunks = 5;
+  int64 lamport_timestamp = 6;
+}
+
+message UploadResponse {
+  bool success = 1;
+  int32 round = 2;
+  int64 lamport_timestamp = 3;
+  string message = 4;
+}
+
+message ModelRequest {
+  string client_id = 1;
+  int32 round = 2;
+}
+
+message ModelChunk {
+  bytes data = 1;
+  int32 chunk_index = 2;
+  int32 total_chunks = 3;
+  int64 lamport_timestamp = 4;
+}
+
+message ElectionMessage {
+  int32 sender_id = 1;
+  string election_type = 2;  // "ELECTION" or "OK"
+}
+
+message ElectionResponse {
+  bool respond_ok = 1;
+  int32 responder_id = 2;
+}
+
+message CoordinatorMessage {
+  int32 coordinator_id = 1;
+  string address = 2;
+}
+
+message CoordinatorAck {
+  bool acknowledged = 1;
+}
