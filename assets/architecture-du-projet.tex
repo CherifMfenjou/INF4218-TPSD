@@ -1,0 +1,127 @@
+% Architecture globale — INF4218 TPSD
+% Compilation : pdflatex architecture-du-projet.tex
+\documentclass[tikz,border=6pt]{standalone}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usetikzlibrary{arrows.meta, positioning, fit, calc, backgrounds}
+
+\definecolor{uyblue}{RGB}{0,102,153}
+\definecolor{uyblueDark}{RGB}{0,70,110}
+\definecolor{uyorange}{RGB}{230,120,30}
+\definecolor{uygreen}{RGB}{0,128,64}
+\definecolor{uylayerApp}{RGB}{255,248,220}
+\definecolor{uylayerMid}{RGB}{230,240,250}
+\definecolor{uylayerNet}{RGB}{235,245,235}
+\definecolor{uyclient}{RGB}{220,235,245}
+\definecolor{uylegend}{RGB}{252,252,252}
+
+\tikzset{
+  client/.style={draw=uyblue, fill=uyclient, line width=0.8pt, rounded corners=4pt,
+    minimum width=2.55cm, minimum height=1.35cm, align=center, font=\scriptsize\sffamily},
+  privdata/.style={font=\tiny\sffamily, text=uygreen!80!black},
+  port/.style={font=\tiny\sffamily\bfseries, text=uyblueDark},
+  layer/.style={draw=uyblue!55, line width=0.6pt, rounded corners=3pt,
+    align=center, font=\scriptsize\sffamily, inner sep=4pt},
+  serverbar/.style={draw=uyblue, fill=uyblue, text=white, line width=0.8pt,
+    rounded corners=3pt, minimum width=9.2cm, minimum height=0.5cm,
+    align=center, font=\scriptsize\bfseries\sffamily},
+  grpczone/.style={draw=uyorange, fill=uyorange!10, line width=0.9pt,
+    rounded corners=5pt, inner sep=5pt},
+  arrow/.style={-{Stealth[length=2mm]}, line width=0.9pt, uyblue},
+  arrowup/.style={-{Stealth[length=2mm]}, line width=0.85pt, uygreen!70!black},
+  arrowlabel/.style={font=\tiny\sffamily, fill=white, inner sep=1pt},
+  ckpt/.style={draw=uygreen!70!black, fill=uygreen!10, line width=0.7pt,
+    rounded corners=3pt, minimum width=2cm, minimum height=0.55cm,
+    align=center, font=\tiny\sffamily},
+  legendbox/.style={draw=uyblue!40, fill=uylegend, line width=0.6pt,
+    rounded corners=4pt, inner sep=4pt, font=\tiny\sffamily, align=left},
+  groupbox/.style={draw=uyblue!50, line width=0.8pt, dashed, rounded corners=6pt,
+    inner sep=8pt},
+}
+
+\begin{document}
+\begin{tikzpicture}[node distance=0.3cm and 0.4cm]
+
+  % --- Clients ---
+  \node[client] (c1) {%
+    \textbf{P1} --- \textit{iris}\\%
+    \texttt{federated\_client}};
+  \node[client, right=of c1] (c2) {%
+    \textbf{P2} --- \textit{mnist}\\%
+    \texttt{federated\_client}};
+  \node[client, right=of c2] (c3) {%
+    \textbf{P3} --- \textit{cifar}\\%
+    \texttt{federated\_client}};
+
+  \node[privdata, above=0.02cm of c1] {données privées};
+  \node[privdata, above=0.02cm of c2] {données privées};
+  \node[privdata, above=0.02cm of c3] {données privées};
+
+  \node[port, below=0.01cm of c1] {:50061};
+  \node[port, below=0.01cm of c2] {:50062};
+  \node[port, below=0.01cm of c3] {:50063};
+
+  \begin{scope}[on background layer]
+    \node[groupbox, fit=(c1)(c2)(c3),
+      label={[font=\scriptsize\bfseries\sffamily, text=uyblueDark]above:{Clients fédérés}}] (clients) {};
+  \end{scope}
+
+  % --- Zone gRPC ---
+  \node[grpczone, below=0.75cm of c2, minimum width=9.2cm, minimum height=0.75cm] (grpc) {%
+    \textbf{gRPC} --- \texttt{federation.proto} --- 12 RPC (unary + streaming)};
+
+  \draw[arrow] (c1.south) -- ($(c1.south)!0.55!(grpc.north west)$);
+  \draw[arrow] (c2.south) -- (grpc.north);
+  \draw[arrow] (c3.south) -- ($(c3.south)!0.55!(grpc.north east)$);
+
+  \node[arrowlabel, above=0.08cm of grpc, xshift=-1.8cm] {gradients $\uparrow$};
+  \node[arrowlabel, above=0.08cm of grpc, xshift=1.8cm] {modèle $\downarrow$};
+
+  % --- Serveur ---
+  \node[serverbar, below=0.38cm of grpc] (stitle) {%
+    Coordinateur \textbf{P0} --- \texttt{coordinator.py} --- \textbf{:50051}};
+
+  \node[layer, fill=uylayerApp, below=0.22cm of stitle,
+    minimum width=9.2cm, minimum height=0.62cm] (app) {%
+    \textbf{Application} --- Rounds FL \enspace$\cdot$\enspace agrégation \enspace$\cdot$\enspace modèle global};
+
+  \node[layer, fill=uylayerMid, below=0.1cm of app,
+    minimum width=9.2cm, minimum height=0.72cm] (mid) {%
+    \textbf{Middleware} --- Lamport \enspace$\cdot$\enspace Bully \enspace$\cdot$\enspace Mutex \enspace$\cdot$\enspace%
+    Nommage (3 types) \enspace$\cdot$\enspace Checkpoint};
+
+  \node[layer, fill=uylayerNet, below=0.1cm of mid,
+    minimum width=9.2cm, minimum height=0.55cm] (net) {%
+    \textbf{Réseau} --- gRPC unary/streaming \enspace$\cdot$\enspace chunks 4\,Ko};
+
+  \node[ckpt, below=0.28cm of net] (ckpt) {%
+    \textbf{checkpoints/} JSON};
+
+  \draw[arrowup] (net.south) -- (ckpt.north);
+
+  \begin{scope}[on background layer]
+    \node[groupbox, fit=(stitle)(app)(mid)(net)(ckpt),
+      label={[font=\scriptsize\bfseries\sffamily, text=uyblueDark]above:{Serveur (3 niveaux)}}] (serverbox) {};
+  \end{scope}
+
+  \draw[arrow] (grpc.south) -- (stitle.north);
+
+  % --- Légende à droite ---
+  \node[legendbox, right=0.35cm of serverbox.east, anchor=north west, yshift=-0.4cm] (legend) {%
+    \textbf{Flux d'un round}\\[2pt]
+    1.\ RegisterClient\\
+    2.\ Heartbeat (Lamport)\\
+    3.\ UploadGradients\\
+    \hspace{2pt}$\rightarrow$ agrégation (mutex)\\
+    4.\ DownloadModel\\
+    \hspace{2pt}$\leftarrow$ modèle global};
+
+  \begin{scope}[on background layer]
+    \node[groupbox, fit=(clients)(serverbox)(legend),
+      label={[font=\small\bfseries\sffamily, text=uyblue]above:{Architecture globale du système}}] {};
+  \end{scope}
+
+\end{tikzpicture}
+\end{document}

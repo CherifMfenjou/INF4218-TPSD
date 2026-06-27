@@ -29,6 +29,7 @@ from src.fault_tolerance.checkpoint import CheckpointManager, RecoveryManager, S
 from src.naming.attribute import AttributeNamingService
 from src.naming.flat import FlatNamingService
 from src.naming.structured import StructuredNamingService
+from src.utils.network import coordinator_address, get_local_ip
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -40,10 +41,17 @@ STREAMING_THRESHOLD = 8192
 class FederationCoordinatorServicer(federation_pb2_grpc.FederationCoordinatorServicer):
     """Implémentation du service gRPC coordinateur."""
 
-    def __init__(self, process_id: int = 0, port: int = 50051, checkpoint_dir: str = "checkpoints"):
+    def __init__(
+        self,
+        process_id: int = 0,
+        port: int = 50051,
+        checkpoint_dir: str = "checkpoints",
+        host: Optional[str] = None,
+    ):
         self.process_id = process_id
         self.port = port
-        self.address = f"localhost:{port}"
+        self.host = host or get_local_ip()
+        self.address = coordinator_address(self.host, port)
 
         self.clock = LamportClock(process_id)
         self.flat_naming = FlatNamingService()
@@ -275,13 +283,23 @@ class FederationCoordinatorServicer(federation_pb2_grpc.FederationCoordinatorSer
             self.mutex.release_access("aggregation")
 
 
-def serve(process_id: int = 0, port: int = 50051, checkpoint_dir: str = "checkpoints") -> None:
+def serve(
+    process_id: int = 0,
+    port: int = 50051,
+    checkpoint_dir: str = "checkpoints",
+    host: Optional[str] = None,
+) -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
-    servicer = FederationCoordinatorServicer(process_id, port, checkpoint_dir)
+    servicer = FederationCoordinatorServicer(process_id, port, checkpoint_dir, host)
     federation_pb2_grpc.add_FederationCoordinatorServicer_to_server(servicer, server)
     server.add_insecure_port(f"[::]:{port}")
     server.start()
-    logger.info("Federation coordinator started on port %d (process_id=%d)", port, process_id)
+    logger.info(
+        "Federation coordinator started on %s (process_id=%d, bind [::]:%d)",
+        servicer.address,
+        process_id,
+        port,
+    )
     try:
         server.wait_for_termination()
     except KeyboardInterrupt:
@@ -296,5 +314,6 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=50051)
     parser.add_argument("--process-id", type=int, default=0)
     parser.add_argument("--checkpoint-dir", default="checkpoints")
+    parser.add_argument("--host", default=None, help="IP annoncée du coordinateur (auto-détectée si omis)")
     args = parser.parse_args()
-    serve(args.process_id, args.port, args.checkpoint_dir)
+    serve(args.process_id, args.port, args.checkpoint_dir, args.host)

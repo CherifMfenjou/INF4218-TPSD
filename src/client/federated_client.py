@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.communication import federation_pb2, federation_pb2_grpc
 from src.coordination.lamport import LamportClock
 from src.naming.flat import FlatNamingService
+from src.utils.network import default_client_address
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -33,11 +34,14 @@ class FederatedClient:
         process_id: int = 1,
         dataset: str = "default",
         location: str = "local",
+        advertise_address: Optional[str] = None,
+        host: Optional[str] = None,
     ):
         self.server_address = server_address
         self.process_id = process_id
         self.dataset = dataset
         self.location = location
+        self.advertise_address = advertise_address or default_client_address(process_id, host)
 
         self.clock = LamportClock(process_id)
         self.flat_id = FlatNamingService.generate_id()
@@ -70,15 +74,19 @@ class FederatedClient:
                 structured_path=self.structured_path,
                 attributes={"dataset": self.dataset, "location": self.location},
                 process_id=self.process_id,
-                address=f"client-{self.process_id}",
+                address=self.advertise_address,
             ),
             timeout=5,
         )
         self.clock.receive_event(response.lamport_timestamp, "register_ack")
         self.current_round = response.current_round
         logger.info(
-            "Registered as %s (process %d), round %d, Lamport ts=%d",
-            self.flat_id, response.assigned_id, self.current_round, self.clock.current,
+            "Registered as %s at %s (process %d), round %d, Lamport ts=%d",
+            self.flat_id,
+            self.advertise_address,
+            response.assigned_id,
+            self.current_round,
+            self.clock.current,
         )
         return response.success
 
@@ -202,15 +210,15 @@ class FederatedClient:
         )
         return response.address if response.found else None
 
-    def query_by_attributes(self, attributes: dict) -> list:
-        """Teste la recherche par attributs."""
+    def query_by_attributes(self, attributes: dict) -> tuple[list, list]:
+        """Recherche par attributs ; retourne (client_ids, addresses)."""
         if not self.stub:
-            return []
+            return [], []
         response = self.stub.QueryByAttributes(
             federation_pb2.AttributeQueryRequest(attributes=attributes),
             timeout=5,
         )
-        return list(response.client_ids)
+        return list(response.client_ids), list(response.addresses)
 
     def close(self) -> None:
         if self.channel:
@@ -221,14 +229,27 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Federated Learning Client")
-    parser.add_argument("--server", default="localhost:50051")
+    parser.add_argument("--server", default="localhost:50051", help="Adresse gRPC du coordinateur (IP:port)")
     parser.add_argument("--process-id", type=int, default=1)
     parser.add_argument("--dataset", default="iris")
     parser.add_argument("--location", default="local")
     parser.add_argument("--rounds", type=int, default=5)
+    parser.add_argument("--host", default=None, help="IP locale annoncée (auto-détectée si omis)")
+    parser.add_argument(
+        "--advertise-address",
+        default=None,
+        help="Adresse complète enregistrée dans le nommage (ex. 192.168.1.10:50061)",
+    )
     args = parser.parse_args()
 
-    client = FederatedClient(args.server, args.process_id, args.dataset, args.location)
+    client = FederatedClient(
+        args.server,
+        args.process_id,
+        args.dataset,
+        args.location,
+        advertise_address=args.advertise_address,
+        host=args.host,
+    )
     if not client.connect():
         sys.exit(1)
     if not client.register():
